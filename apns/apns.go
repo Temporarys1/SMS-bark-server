@@ -1,9 +1,11 @@
 package apns
 
 import (
+	"context"
 	"crypto/tls"
 	"crypto/x509"
 	"fmt"
+	"net"
 	"net/http"
 	"runtime"
 	"strings"
@@ -78,7 +80,13 @@ func ReConfigAPNS(maxClientCount int) error {
 			},
 			HTTPClient: &http.Client{
 				Transport: &http2.Transport{
-					DialTLS: apns2.DialTLS,
+					DialTLSContext: func(ctx context.Context, network, addr string, cfg *tls.Config) (net.Conn, error) {
+						dialer := &net.Dialer{
+							Timeout:   apns2.TLSDialTimeout,
+							KeepAlive: apns2.TCPKeepAlive,
+						}
+						return dialer.DialContext(ctx, network, addr)
+					},
 					TLSClientConfig: &tls.Config{
 						RootCAs: rootCAs,
 					},
