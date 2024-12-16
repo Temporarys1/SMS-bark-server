@@ -34,10 +34,19 @@ const (
 	PayloadMaximum = 4096
 )
 
-var maxClientCount = 50
-var clients = make(chan *apns2.Client, maxClientCount)
+var (
+	maxClientCount = 1
+	clients        = make(chan *apns2.Client, maxClientCount)
+)
 
-func init() {
+func SetMaxClientCount(count int) {
+	if count > 0 {
+		maxClientCount = count
+	}
+}
+
+// InitAPNSClient 初始化 APNS 客户端池
+func InitAPNS() {
 	authKey, err := token.AuthKeyFromBytes([]byte(apnsPrivateKey))
 	if err != nil {
 		logger.Fatalf("failed to create APNS auth key: %v", err)

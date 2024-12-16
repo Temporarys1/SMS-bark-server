@@ -8,6 +8,7 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/finb/bark-server/v2/apns"
 	"github.com/finb/bark-server/v2/database"
 
 	jsoniter "github.com/json-iterator/go"
@@ -111,6 +112,12 @@ func main() {
 				Value:   "",
 			},
 			&cli.IntFlag{
+				Name:    "max-apns-client-count",
+				Usage:   "Maximum number of APNs client connections",
+				EnvVars: []string{"BARK_SERVER_MAX_APNS_CLIENT_COUNT"},
+				Value:   1,
+			},
+			&cli.IntFlag{
 				Name:    "concurrency",
 				Usage:   "Maximum number of concurrent connections",
 				EnvVars: []string{"BARK_SERVER_CONCURRENCY"},
@@ -181,6 +188,9 @@ func main() {
 			} else {
 				db = database.NewBboltdb(c.String("data"))
 			}
+
+			apns.SetMaxClientCount(c.Int("max-apns-client-count"))
+			apns.InitAPNS()
 
 			go func() {
 				sigs := make(chan os.Signal, 1)
