@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/signal"
 	"reflect"
+	"runtime"
 	"syscall"
 	"time"
 
@@ -49,7 +50,7 @@ func main() {
 				Name:    "data",
 				Usage:   "Server data storage dir",
 				EnvVars: []string{"BARK_SERVER_DATA_DIR"},
-				Value:   "/data",
+				Value:   GetDataDir(),
 			},
 			&cli.StringFlag{
 				Name:    "dsn",
@@ -115,7 +116,8 @@ func main() {
 				Name:    "max-apns-client-count",
 				Usage:   "Maximum number of APNs client connections",
 				EnvVars: []string{"BARK_SERVER_MAX_APNS_CLIENT_COUNT"},
-				Value:   1,
+				Value:   runtime.NumCPU(),
+				Action:  func(ctx *cli.Context, v int) error { return apns.ReConfigAPNS(v) },
 			},
 			&cli.IntFlag{
 				Name:    "concurrency",
@@ -188,9 +190,6 @@ func main() {
 			} else {
 				db = database.NewBboltdb(c.String("data"))
 			}
-
-			apns.SetMaxClientCount(c.Int("max-apns-client-count"))
-			apns.InitAPNS()
 
 			go func() {
 				sigs := make(chan os.Signal, 1)

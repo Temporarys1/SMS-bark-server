@@ -28,28 +28,30 @@ type PushMessage struct {
 }
 
 const (
-	topic          = "me.fin.bark"
-	keyID          = "LH4T9V5U4R"
-	teamID         = "5U8LBRXG3A"
-	PayloadMaximum = 4096
+	topic  = "me.fin.bark"
+	keyID  = "LH4T9V5U4R"
+	teamID = "5U8LBRXG3A"
 )
 
-var (
-	maxClientCount = 1
-	clients        = make(chan *apns2.Client, maxClientCount)
-)
+// clients APNS Clients Channel
+var clients = make(chan *apns2.Client)
 
-func SetMaxClientCount(count int) {
-	if count > 0 {
-		maxClientCount = count
+func init() {
+	if err := ReConfigAPNS(runtime.NumCPU()); err != nil {
+		logger.Fatal(err)
 	}
+	logger.Info("init apns client success...")
 }
 
-// InitAPNSClient 初始化 APNS 客户端池
-func InitAPNS() {
+// ReConfigAPNS 初始化 APNS 客户端池
+func ReConfigAPNS(maxClientCount int) error {
+	if maxClientCount < 1 {
+		return fmt.Errorf("Invalid number of clients")
+	}
+
 	authKey, err := token.AuthKeyFromBytes([]byte(apnsPrivateKey))
 	if err != nil {
-		logger.Fatalf("failed to create APNS auth key: %v", err)
+		return fmt.Errorf("failed to create APNS auth key: %v", err)
 	}
 
 	var rootCAs *x509.CertPool
@@ -58,7 +60,7 @@ func InitAPNS() {
 	} else {
 		rootCAs, err = x509.SystemCertPool()
 		if err != nil {
-			logger.Fatalf("failed to get rootCAs: %v", err)
+			return fmt.Errorf("failed to get rootCAs: %v", err)
 		}
 	}
 
@@ -66,6 +68,7 @@ func InitAPNS() {
 		rootCAs.AppendCertsFromPEM([]byte(ca))
 	}
 
+	clients = make(chan *apns2.Client, maxClientCount)
 	for i := 0; i < min(runtime.NumCPU(), maxClientCount); i++ {
 		client := &apns2.Client{
 			Token: &token.Token{
@@ -87,7 +90,10 @@ func InitAPNS() {
 		clients <- client
 	}
 
-	logger.Info("init apns client success...")
+	if maxClientCount != runtime.NumCPU() {
+		logger.Infof("apns max client set to %d...", maxClientCount)
+	}
+	return nil
 }
 
 func Push(msg *PushMessage) error {
