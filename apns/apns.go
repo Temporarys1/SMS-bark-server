@@ -17,6 +17,7 @@ import (
 )
 
 type PushMessage struct {
+	Id          string `form:"id,omitempty" json:"id,omitempty" xml:"id,omitempty" query:"id,omitempty"`
 	DeviceToken string `form:"-" json:"-" xml:"-" query:"-"`
 	DeviceKey   string `form:"device_key,omitempty" json:"device_key,omitempty" xml:"device_key,omitempty" query:"device_key,omitempty"`
 	Subtitle    string `form:"subtitle,omitempty" json:"subtitle,omitempty" xml:"subtitle,omitempty" query:"subtitle,omitempty"`
@@ -25,6 +26,16 @@ type PushMessage struct {
 	// ios notification sound(system sound please refer to http://iphonedevwiki.net/index.php/AudioServices)
 	Sound     string                 `form:"sound,omitempty" json:"sound,omitempty" xml:"sound,omitempty" query:"sound,omitempty"`
 	ExtParams map[string]interface{} `form:"ext_params,omitempty" json:"ext_params,omitempty" xml:"ext_params,omitempty" query:"ext_params,omitempty"`
+}
+
+// Check if it's an empty message, empty messages might be silent push notifications
+func (p PushMessage) IsEmptyAlert() bool {
+	return p.Title == "" && p.Body == "" && p.Subtitle == ""
+}
+
+func (p PushMessage) IsDelete() bool {
+	val := p.ExtParams["delete"]
+	return val == "1" || val == 1 || val == 1.0
 }
 
 const (
@@ -36,7 +47,7 @@ const (
 
 var clients = make(chan *apns2.Client, 1)
 
-// 初始化 APNS 客户端池
+// Initialize APNS client pool
 func init() {
 	ReCreateAPNS(1)
 }
@@ -94,16 +105,23 @@ func ReCreateAPNS(maxClientCount int) error {
 }
 
 func Push(msg *PushMessage) error {
-	pl := payload.NewPayload().
-		AlertTitle(msg.Title).
-		AlertSubtitle(msg.Subtitle).
-		AlertBody(msg.Body).
-		Sound(msg.Sound).
-		Category("myNotificationCategory")
-
-	group, exist := msg.ExtParams["group"]
-	if exist {
-		pl = pl.ThreadID(group.(string))
+	pl := payload.NewPayload().MutableContent()
+	pushType := apns2.PushTypeAlert
+	if msg.IsDelete() {
+		// Silent push notification
+		pl = pl.ContentAvailable()
+		pushType = apns2.PushTypeBackground
+	} else {
+		// Regular push notification
+		pl = pl.AlertTitle(msg.Title).
+			AlertSubtitle(msg.Subtitle).
+			AlertBody(msg.Body).
+			Sound(msg.Sound).
+			Category("myNotificationCategory")
+		group, exist := msg.ExtParams["group"]
+		if exist {
+			pl = pl.ThreadID(group.(string))
+		}
 	}
 
 	for k, v := range msg.ExtParams {
@@ -115,10 +133,12 @@ func Push(msg *PushMessage) error {
 	clients <- client   // add the client back to the pool
 
 	resp, err := client.Push(&apns2.Notification{
+		CollapseID:  msg.Id,
 		DeviceToken: msg.DeviceToken,
 		Topic:       topic,
-		Payload:     pl.MutableContent(),
+		Payload:     pl,
 		Expiration:  time.Now().Add(24 * time.Hour),
+		PushType:    pushType,
 	})
 	if err != nil {
 		return err
