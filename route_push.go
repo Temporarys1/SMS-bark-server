@@ -76,7 +76,7 @@ func routeDoPushV1(c *fiber.Ctx) error {
 	// parse url path (highest priority)
 	pathParams, err := extractUrlPathParams(c)
 	if err != nil {
-		return c.Status(500).JSON(failed(400, "url path parse failed: %v", err))
+		return c.Status(400).JSON(failed(400, "url path parse failed: %v", err))
 	}
 	for key, val := range pathParams {
 		params[key] = val
@@ -102,7 +102,7 @@ func routeDoPushV2(c *fiber.Ctx) error {
 	// parse url path (highest priority)
 	pathParams, err := extractUrlPathParams(c)
 	if err != nil {
-		return c.Status(500).JSON(failed(400, "url path parse failed: %v", err))
+		return c.Status(400).JSON(failed(400, "url path parse failed: %v", err))
 	}
 	for key, val := range pathParams {
 		params[key] = val
@@ -262,7 +262,12 @@ func push(params map[string]interface{}) (int, error) {
 	}
 	msg.DeviceToken = deviceToken
 
-	err = apns.Push(&msg)
+	code, err := apns.Push(&msg)
+
+	// Invalid token, delete it from database.
+	if code == 410 || (code == 400 && strings.Contains(err.Error(), "BadDeviceToken")) {
+		_, _ = db.SaveDeviceTokenByKey(msg.DeviceKey, "")
+	}
 	if err != nil {
 		return 500, fmt.Errorf("push failed: %v", err)
 	}
